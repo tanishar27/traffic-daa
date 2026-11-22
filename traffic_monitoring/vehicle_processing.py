@@ -1,321 +1,139 @@
-"""Vehicle detection, tracking and counting in one module.
-
-app.py imports:
-    from vehicle_processing import detect_vehicles, track_vehicles, count_vehicles
-"""
-
+from functools import lru_cache
 from pathlib import Path
 
 import cv2
+import torch
 from ultralytics import YOLO
 
 from congestion import classify_density
 
-
-# ---------------- SETTINGS ----------------
-
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR.parent / "yolo26n.pt"
-VIDEO_PATH = BASE_DIR / "videos" / "trafficv.mp4"
+VIDEO_DIR = BASE_DIR / "videos"
+DEFAULT_VIDEO = "trafficv.mp4"
+VIDEO_TYPES = {".mp4", ".avi", ".mov", ".mkv"}
 
 VEHICLE_CLASSES = [2, 3, 5, 7]
-CLASS_NAMES = {
-    2: "Car",
-    3: "Motorcycle",
-    5: "Bus",
-    7: "Truck",
-}
+CLASS_NAMES = {2: "Car", 3: "Motorcycle", 5: "Bus", 7: "Truck"}
 
-CONF_THRESHOLD = 0.20   # lower = detects more (small/distant) vehicles
-IMAGE_SIZE = 960        # larger input = better for small objects
+CONF_THRESHOLD = 0.20
+IMAGE_SIZE = 640
+FRAME_SKIP = 2
+MAX_WIDTH = 960
+DEVICE = 0 if torch.cuda.is_available() else "cpu"
+
+GREEN, RED, YELLOW, CYAN = (0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 255, 0)
+DENSITY_COLORS = {"Low": GREEN, "Medium": (0, 165, 255), "High": RED}
 
 
-# ---------------- SHARED HELPER ----------------
+@lru_cache(maxsize=1)
+def _model():
+    return YOLO(str(MODEL_PATH))
 
-def _open_video_and_model():
-    """Validate paths, then return (model, cap)."""
 
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
+def _text(frame, text, org, scale, color):
+    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2)
 
-    if not VIDEO_PATH.exists():
-        raise FileNotFoundError(f"Video not found: {VIDEO_PATH}")
 
-    model = YOLO(str(MODEL_PATH))
-    cap = cv2.VideoCapture(str(VIDEO_PATH))
+def list_videos():
+    files = VIDEO_DIR.iterdir() if VIDEO_DIR.exists() else []
+    return sorted(p.name for p in files if p.suffix.lower() in VIDEO_TYPES)
 
+
+def save_video(name, data):
+    VIDEO_DIR.mkdir(exist_ok=True)
+    name = Path(name).name
+    (VIDEO_DIR / name).write_bytes(data)
+    return name
+
+
+def delete_video(name):
+    (VIDEO_DIR / Path(name).name).unlink(missing_ok=True)
+
+
+def _run(track, video):
+    video_path = VIDEO_DIR / (video or DEFAULT_VIDEO)
+
+    for path in (MODEL_PATH, video_path):
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+
+    cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        raise RuntimeError(f"Could not open traffic video: {VIDEO_PATH}")
+        raise RuntimeError(f"Could not open traffic video: {video_path}")
 
-    return model, cap
-
-
-# ---------------- 1. VEHICLE DETECTION ----------------
-
-def detect_vehicles():
-    """Yield (BGR frame, vehicle_count) for each video frame."""
-
-    model, cap = _open_video_and_model()
+    model = _model()
+    model.predictor = None
+    options = dict(classes=VEHICLE_CLASSES, conf=CONF_THRESHOLD, imgsz=IMAGE_SIZE, device=DEVICE, verbose=False)
 
     try:
+        n = 0
         while True:
-
-            ret, frame = cap.read()
-
-            if not ret:
-                break
-
-            results = model(
-                frame,
-                classes=VEHICLE_CLASSES,
-                conf=CONF_THRESHOLD,
-                imgsz=IMAGE_SIZE,
-                verbose=False
-            )
-
-            vehicle_count = 0
-
-            for box in results[0].boxes:
-
-                class_id = int(box.cls[0])
-                vehicle_count += 1
-
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-                cv2.putText(
-                    frame,
-                    CLASS_NAMES[class_id],
-                    (x1, max(y1 - 10, 20)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2
-                )
-
-            cv2.putText(
-                frame,
-                f"Vehicles: {vehicle_count}",
-                (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 0, 255),
-                2
-            )
-
-            # Frame stays BGR: app.py uses channels="BGR"
-            yield frame, vehicle_count
-
+            ok, frame = cap.read()
+            if not ok:
+                return
+            n += 1
+            if n % FRAME_SKIP:
+                continue
+            h, w = frame.shape[:2]
+            if w > MAX_WIDTH:
+                frame = cv2.resize(frame, (MAX_WIDTH, h * MAX_WIDTH // w))
+            result = (model.track(frame, persist=True, tracker="bytetrack.yaml", **options) if track
+                      else model(frame, **options))[0]
+            yield frame, result
     finally:
         cap.release()
 
 
-# ---------------- 2. VEHICLE TRACKING ----------------
-
-def track_vehicles():
-    """Yield (annotated BGR frame, tracked_count) for each video frame."""
-
-    model, cap = _open_video_and_model()
-
-    try:
-        while True:
-
-            ret, frame = cap.read()
-
-            if not ret:
-                break
-
-            results = model.track(
-                frame,
-                persist=True,
-                tracker="bytetrack.yaml",
-                classes=VEHICLE_CLASSES,
-                conf=CONF_THRESHOLD,
-                imgsz=IMAGE_SIZE,
-                verbose=False
-            )
-
-            result = results[0]
-            annotated_frame = result.plot()   # BGR
-
-            tracked_count = 0
-
-            if (
-                result.boxes is not None
-                and result.boxes.id is not None
-            ):
-                tracked_count = len(result.boxes.id)
-
-            yield annotated_frame, tracked_count
-
-    finally:
-        cap.release()
+def detect_vehicles(video=None):
+    for frame, r in _run(False, video):
+        for box in r.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            cv2.rectangle(frame, (x1, y1), (x2, y2), GREEN, 2)
+            _text(frame, CLASS_NAMES[int(box.cls[0])], (x1, max(y1 - 10, 20)), 0.6, GREEN)
+        _text(frame, f"Vehicles: {len(r.boxes)}", (20, 40), 1, RED)
+        yield frame, len(r.boxes)
 
 
-# ---------------- 3. VEHICLE COUNTING ----------------
+def track_vehicles(video=None):
+    for _, r in _run(True, video):
+        ids = r.boxes.id
+        yield r.plot(), 0 if ids is None else len(ids)
 
-def count_vehicles():
-    """Yield (BGR frame, stats dict) while counting line crossings."""
 
-    model, cap = _open_video_and_model()
+def count_vehicles(video=None):
+    previous, counted, total = {}, set(), 0
+    counts = dict.fromkeys(CLASS_NAMES.values(), 0)
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    for frame, r in _run(True, video):
+        h, w = frame.shape[:2]
+        line_y = h // 2
+        cv2.line(frame, (0, line_y), (w, line_y), YELLOW, 3)
+        _text(frame, "COUNTING LINE", (20, line_y - 10), 0.6, YELLOW)
 
-    # Counting line at the middle of the video
-    line_y = int(height * 0.50)
+        boxes = r.boxes
+        ids = boxes.id.int().tolist() if boxes.id is not None else [None] * len(boxes)
 
-    previous_positions = {}
-    counted_ids = set()
+        for (x1, y1, x2, y2), cls, tid in zip(boxes.xyxy.int().tolist(), boxes.cls.int().tolist(), ids):
+            name = CLASS_NAMES[cls]
+            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            cv2.rectangle(frame, (x1, y1), (x2, y2), GREEN, 2)
+            cv2.circle(frame, (cx, cy), 4, RED, -1)
+            _text(frame, f"{name} ID:{tid}" if tid is not None else name, (x1, max(y1 - 10, 20)), 0.5, GREEN)
 
-    total_count = 0
-    vehicle_counts = {name: 0 for name in CLASS_NAMES.values()}
+            if tid is None:
+                continue
+            py = previous.get(tid)
+            if py is not None and tid not in counted and (py < line_y <= cy or py > line_y >= cy):
+                counted.add(tid)
+                total += 1
+                counts[name] += 1
+            previous[tid] = cy
 
-    try:
-        while True:
+        visible = len(boxes)
+        density = classify_density(visible)
+        _text(frame, f"Total Count: {total}", (20, 40), 0.8, YELLOW)
+        _text(frame, f"Visible Vehicles: {visible}", (20, 80), 0.7, CYAN)
+        _text(frame, f"Traffic Density: {density}", (20, 120), 0.8, DENSITY_COLORS.get(density, (255, 255, 255)))
 
-            ret, frame = cap.read()
-
-            if not ret:
-                break
-
-            results = model.track(
-                frame,
-                persist=True,
-                tracker="bytetrack.yaml",
-                classes=VEHICLE_CLASSES,
-                conf=CONF_THRESHOLD,
-                imgsz=IMAGE_SIZE,
-                verbose=False
-            )
-
-            result = results[0]
-            visible_count = 0
-
-            # Draw counting line
-            cv2.line(frame, (0, line_y), (width, line_y), (0, 255, 255), 3)
-
-            cv2.putText(
-                frame,
-                "COUNTING LINE",
-                (20, line_y - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 255, 255),
-                2
-            )
-
-            if result.boxes is not None and len(result.boxes) > 0:
-
-                visible_count = len(result.boxes)
-
-                boxes = result.boxes.xyxy.cpu().numpy()
-                classes = result.boxes.cls.int().cpu().tolist()
-
-                # IDs are None on frames where the tracker has no tracks yet
-                if result.boxes.id is not None:
-                    ids = result.boxes.id.int().cpu().tolist()
-                else:
-                    ids = [None] * len(classes)
-
-                for box, track_id, class_id in zip(boxes, ids, classes):
-
-                    x1, y1, x2, y2 = map(int, box)
-
-                    center_x = (x1 + x2) // 2
-                    center_y = (y1 + y2) // 2
-
-                    vehicle_name = CLASS_NAMES[class_id]
-
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.circle(frame, (center_x, center_y), 4, (0, 0, 255), -1)
-
-                    label = (
-                        f"{vehicle_name} ID:{track_id}"
-                        if track_id is not None
-                        else vehicle_name
-                    )
-
-                    cv2.putText(
-                        frame,
-                        label,
-                        (x1, max(y1 - 10, 20)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        2
-                    )
-
-                    # Line-crossing check only for tracked vehicles
-                    if track_id is None:
-                        continue
-
-                    if track_id in previous_positions:
-
-                        previous_y = previous_positions[track_id]
-
-                        crossed = (
-                            previous_y < line_y <= center_y
-                            or
-                            previous_y > line_y >= center_y
-                        )
-
-                        if crossed and track_id not in counted_ids:
-
-                            total_count += 1
-                            counted_ids.add(track_id)
-                            vehicle_counts[vehicle_name] += 1
-
-                    previous_positions[track_id] = center_y
-
-            # Traffic density
-            density = classify_density(visible_count)
-
-            density_color = {
-                "Low": (0, 255, 0),
-                "Medium": (0, 165, 255),
-                "High": (0, 0, 255)
-            }.get(density, (255, 255, 255))
-
-            cv2.putText(
-                frame,
-                f"Total Count: {total_count}",
-                (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 255),
-                2
-            )
-
-            cv2.putText(
-                frame,
-                f"Visible Vehicles: {visible_count}",
-                (20, 80),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 0),
-                2
-            )
-
-            cv2.putText(
-                frame,
-                f"Traffic Density: {density}",
-                (20, 120),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                density_color,
-                2
-            )
-
-            stats = {
-                "total": total_count,
-                "visible": visible_count,
-                "density": density,
-                **vehicle_counts
-            }
-
-            yield frame, stats
-
-    finally:
-        cap.release()
+        yield frame, {"total": total, "visible": visible, "density": density, **counts}
