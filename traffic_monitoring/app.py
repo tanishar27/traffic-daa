@@ -9,280 +9,320 @@ from vehicle_processing import (
     CONF_THRESHOLD, IMAGE_SIZE, CLASS_NAMES,
 )
 
-st.set_page_config(page_title="AI Traffic Monitoring System", page_icon="🚦", layout="wide")
+st.set_page_config(page_title="Traffic Control Room", page_icon="🚦", layout="wide")
 st.session_state.setdefault("traffic_report", None)
 
-PAGES = {"Overview": "◫", "Vehicle Detection": "◉", "Vehicle Tracking": "⌖",
-         "Traffic Analytics": "▥", "Reports": "▤"}
-CLASS_ICONS = {"Car": "🚗", "Motorcycle": "🏍️", "Bus": "🚌", "Truck": "🚚"}
+PAGES = ["Overview", "Vehicle Detection", "Vehicle Tracking", "Traffic Analytics", "Reports"]
+DENSITY_TONE = {"Low": "go", "Medium": "slow", "High": "stop"}
 
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-:root{--card:rgba(255,255,255,.065);--hover:rgba(255,255,255,.10);--line:rgba(255,255,255,.11);
---text:#f1f5ff;--muted:#93a0c0;--green:#34d399;--cyan:#38bdf8;--violet:#8b7cff}
-html,body,[class*="css"],.stApp{font-family:'Plus Jakarta Sans',sans-serif}
-.stApp{background:radial-gradient(ellipse at 15% 10%,rgba(56,120,255,.34),transparent 45%),
-radial-gradient(ellipse at 90% 20%,rgba(139,124,255,.22),transparent 45%),
-radial-gradient(ellipse at 60% 100%,rgba(20,184,166,.16),transparent 50%),
-linear-gradient(180deg,#0b1330,#0a1026);background-attachment:fixed;color:var(--text)}
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap');
+:root{--bg:#0e1012;--panel:#15181b;--panel2:#1b1f23;--line:#2a2f35;--line2:#3a4047;
+--text:#ece9e2;--muted:#8d9196;--amber:#f5a524;--go:#3ecf8e;--stop:#ef5350;
+--mono:'JetBrains Mono',monospace;--head:'Space Grotesk',sans-serif}
+html,body,.stApp,[class*="css"]{font-family:'Inter',sans-serif}
+.stApp{background-color:var(--bg);color:var(--text);
+background-image:radial-gradient(ellipse at 50% 0%,transparent 0%,var(--bg) 75%),
+linear-gradient(#1c2024 1px,transparent 1px),linear-gradient(90deg,#1c2024 1px,transparent 1px);
+background-size:100% 100%,48px 48px,48px 48px;background-attachment:fixed}
 [data-testid="stHeader"]{background:transparent}
-.block-container{padding-top:1.6rem;max-width:1560px}
-h1,h2,h3,h4{color:var(--text)!important}
+.block-container{padding-top:1.4rem;max-width:1480px;position:relative}
+h1,h2,h3,h4{color:var(--text)!important;font-family:var(--head)!important;letter-spacing:-.02em}
 p,.stMarkdown,.stCaption{color:var(--muted)}
 
-[class*="st-key-card"],[data-testid="stMetric"],.b-card{background:var(--card);backdrop-filter:blur(20px);
-border:1px solid var(--line);border-radius:26px;box-shadow:0 14px 44px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.1)}
-[class*="st-key-card"]{padding:22px 24px}
-[data-testid="stMetric"]{padding:20px 24px;transition:.25s}
-[data-testid="stMetric"]:hover,.b-card:hover{background:var(--hover);transform:translateY(-3px)}
-[data-testid="stMetricLabel"] p{color:var(--muted)!important;font-weight:600}
-[data-testid="stMetricValue"]{color:#fff!important;font-weight:800}
-[data-testid="stSidebar"]{background:rgba(255,255,255,.04);backdrop-filter:blur(26px);border-right:1px solid var(--line)}
+/* panels */
+[class*="st-key-panel"]{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.lbl{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.ptitle{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ptitle .lbl b{color:var(--text);font-weight:600}
 
-[data-testid="stRadioOption"]>div>div:first-child{display:none}
-[data-testid="stSidebar"] [role="radiogroup"]{gap:8px}
-[data-testid="stRadioOption"]{padding:12px 16px;border-radius:16px;border:1px solid transparent;margin:0!important;transition:.25s}
-[data-testid="stRadioOption"] p{color:var(--muted)!important;font-weight:600;font-size:15px}
-[data-testid="stRadioOption"]:hover{background:var(--card);border-color:var(--line)}
-[data-testid="stRadioOption"]:has(input:checked){background:linear-gradient(135deg,rgba(56,189,248,.26),rgba(139,124,255,.26));
-border-color:rgba(56,189,248,.5);box-shadow:0 8px 26px rgba(56,189,248,.22)}
-[data-testid="stRadioOption"]:has(input:checked) p{color:#fff!important}
+/* sidebar */
+[data-testid="stSidebar"]{background:var(--panel);border-right:1px solid var(--line)}
+[data-testid="stSidebar"] .block-container,[data-testid="stSidebarContent"]{padding-top:8px}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 0 18px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.signal{display:flex;flex-direction:column;gap:3px;padding:5px;background:#090a0b;border:1px solid var(--line2);border-radius:7px}
+.signal i{width:9px;height:9px;border-radius:50%;background:#2a2f35}
+.signal i.r{background:var(--stop);box-shadow:0 0 8px var(--stop)}
+.signal i.a{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.signal i.g{background:var(--go);box-shadow:0 0 8px var(--go)}
+.brand b{font-family:var(--head);font-size:17px;color:var(--text);display:block;line-height:1.1}
+.brand span{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.14em}
 
-.stButton>button{background:linear-gradient(135deg,#22c7a5,#38bdf8 55%,#8b7cff);border:none;border-radius:16px;
-min-height:50px;padding:10px 28px;font-weight:800;box-shadow:0 10px 30px rgba(56,189,248,.35);transition:.25s}
-.stButton>button,.stButton>button *{color:#07102a!important}
-.stButton>button:hover{transform:translateY(-2px);box-shadow:0 14px 38px rgba(52,211,153,.5)}
-.stDownloadButton>button{background:var(--card);color:var(--cyan);border:1px solid rgba(56,189,248,.5);border-radius:16px;min-height:48px;font-weight:700}
+[data-testid="stSidebar"] [role="radiogroup"]{gap:2px;counter-reset:nav}
+[data-testid="stSidebar"] [role="radiogroup"]>label>div:first-child{display:none}
+[data-testid="stSidebar"] [role="radiogroup"]>label{width:100%;padding:10px 12px;border-radius:6px;margin:0!important;border-left:2px solid transparent;transition:background .15s}
+[data-testid="stSidebar"] [role="radiogroup"]>label p{color:var(--muted)!important;font-weight:500;font-size:14.5px}
+[data-testid="stSidebar"] [role="radiogroup"]>label p::before{counter-increment:nav;content:"0" counter(nav);font-family:var(--mono);font-size:11px;
+color:#5a6068;margin-right:12px}
+[data-testid="stSidebar"] [role="radiogroup"]>label:hover{background:var(--panel2)}
+[data-testid="stSidebar"] [role="radiogroup"]>label:has(input:checked){background:var(--panel2);border-left-color:var(--amber)}
+[data-testid="stSidebar"] [role="radiogroup"]>label:has(input:checked) p{color:var(--text)!important}
+[data-testid="stSidebar"] [role="radiogroup"]>label:has(input:checked) p::before{color:var(--amber)}
+
+.kv{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
+.kv div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.kv div span{color:var(--muted)}.kv div b{font-family:var(--mono);color:var(--text);font-weight:600}
+
+/* top bar */
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+padding-bottom:14px;margin-bottom:24px;border-bottom:1px solid var(--line)}
+.crumb{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.crumb b{color:var(--amber);font-weight:600}
+.status{display:flex;align-items:center;gap:18px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.status .clock{color:var(--text);font-size:15px;font-weight:600}
+.led{display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid var(--line2);border-radius:999px;
+letter-spacing:.1em;color:var(--go)}
+.led::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--go);animation:blink 2s infinite}
+@keyframes blink{50%{opacity:.25}}
+
+/* page head */
+.head{margin-bottom:20px}.head h2{margin:6px 0 4px!important;font-size:30px!important;font-weight:700!important}
+.head p{margin:0;font-size:15px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center;margin-bottom:28px}
+.hero h1{font-size:54px!important;font-weight:700!important;line-height:1.02;margin:12px 0 16px!important}
+.hero h1 em{font-style:normal;color:var(--amber)}
+.hero p{font-size:16px;line-height:1.65;max-width:500px;margin:0 0 22px}
+.classes{display:flex;gap:8px;flex-wrap:wrap}
+.classes span{font-family:var(--mono);font-size:12px;padding:6px 10px;border:1px solid var(--line2);border-radius:4px;color:var(--text)}
+.cam{position:relative;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#0a0c0e}
+.cam svg{display:block;width:100%}
+.cam .bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:10px 12px;
+font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--text);background:linear-gradient(#0a0c0ecc,transparent)}
+.rec{color:var(--stop)}.rec::before{content:"● "}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.hero h1{font-size:40px!important}}
+
+/* modules */
+.mod .num{font-family:var(--mono);font-size:12px;color:var(--amber);letter-spacing:.1em}
+.mod h4{margin:10px 0 6px!important;font-size:19px!important;font-weight:600!important}
+.mod p{margin:0 0 16px;font-size:13.5px;line-height:1.55;min-height:62px}
+[class*="st-key-panel_mod"]{transition:border-color .2s}
+[class*="st-key-panel_mod"]:hover{border-color:var(--amber)}
+
+/* buttons */
+.stButton>button{background:var(--amber);border:1px solid var(--amber);border-radius:6px;min-height:44px;padding:8px 22px;
+font-family:var(--mono);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:13px;transition:filter .15s}
+.stButton>button,.stButton>button *{color:#17130a!important}
+.stButton>button:hover{filter:brightness(1.1);border-color:var(--amber)}
+[class*="st-key-panel_mod"] .stButton>button{background:transparent;border-color:var(--line2)}
+[class*="st-key-panel_mod"] .stButton>button,[class*="st-key-panel_mod"] .stButton>button *{color:var(--text)!important}
+[class*="st-key-panel_mod"] .stButton>button:hover{border-color:var(--amber);background:var(--panel2)}
+.stDownloadButton>button{background:transparent;border:1px solid var(--line2);border-radius:6px;min-height:44px;
+font-family:var(--mono);font-weight:600;font-size:13px}
+.stDownloadButton>button,.stDownloadButton>button *{color:var(--text)!important}
+.stDownloadButton>button:hover{border-color:var(--amber)}
+
+/* readouts */
+.ro{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:12px}
+.ro .v{font-family:var(--mono);font-size:38px;font-weight:700;color:var(--text);line-height:1.1;margin-top:8px;
+display:flex;align-items:center;gap:12px}
+.ro.go .v{color:var(--go)}.ro.slow .v{color:var(--amber)}.ro.stop .v{color:var(--stop)}
+.ro .signal{flex-direction:row;padding:4px 5px}
+
+/* feed */
+[data-testid="stImage"] img{border-radius:6px;display:block}
+.feed{min-height:440px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+border-radius:6px;background:repeating-linear-gradient(135deg,#0b0d0f 0 12px,#0e1114 12px 24px);
+border:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.feed b{font-family:var(--head);font-size:20px;letter-spacing:0;text-transform:none;color:var(--text);font-weight:600}
+
+/* misc */
 [data-testid="stAlert"]{background:transparent!important;border:none!important}
-[data-testid="stAlert"]>div,[data-testid="stAlertContainer"]{background:var(--card)!important;border:1px solid var(--line)!important;border-radius:18px!important}
+[data-testid="stAlert"]>div,[data-testid="stAlertContainer"]{background:var(--panel)!important;border:1px solid var(--line)!important;border-radius:8px!important}
 [data-testid="stAlert"] p,[data-testid="stAlert"] span{color:var(--text)!important}
-[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:18px;overflow:hidden}
-
-[data-testid="stImage"]{position:relative}
-[data-testid="stImage"] img{border-radius:18px;display:block}
-[data-testid="stImage"]::before,[data-testid="stImage"]::after{content:"";position:absolute;width:38px;height:38px;
-border:3px solid var(--green);pointer-events:none;z-index:3;filter:drop-shadow(0 0 6px rgba(52,211,153,.8))}
-[data-testid="stImage"]::before{top:10px;left:10px;border-right:0;border-bottom:0;border-radius:14px 0 0 0}
-[data-testid="stImage"]::after{bottom:10px;right:10px;border-left:0;border-top:0;border-radius:0 0 14px 0}
-
-.topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px;margin-bottom:22px}
-.time{font-size:40px;font-weight:800;color:#fff;line-height:1}.time small{font-size:17px;color:var(--muted);margin-left:6px}
-.date{color:var(--muted);font-size:14px;margin-top:6px}
-.pill{flex:1;max-width:460px;min-width:240px;display:flex;align-items:center;gap:14px;padding:14px 20px;border-radius:999px;
-background:var(--card);border:1px solid var(--line);color:var(--muted);font-size:14.5px}.pill b{color:#fff}
-.chip{padding:11px 18px;border-radius:999px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.45);
-color:#6ee7b7;font-weight:700;font-size:13px;display:flex;align-items:center;gap:10px}
-.avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#07102a;
-background:linear-gradient(135deg,#22c7a5,#8b7cff);box-shadow:0 0 22px rgba(139,124,255,.5)}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 1.8s infinite;flex:none}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.7)}70%,100%{box-shadow:0 0 0 11px rgba(52,211,153,0)}}
-.head h2{margin:0 0 4px!important;font-size:28px!important;font-weight:800!important}.head p{margin:0 0 18px}
-.hero{display:grid;grid-template-columns:1.05fr 1fr;gap:30px;align-items:center;padding:34px;margin-bottom:22px;
-background:linear-gradient(120deg,rgba(34,199,165,.14),rgba(139,124,255,.16));border-radius:30px}
-.hero h1{font-size:44px!important;font-weight:800!important;line-height:1.1;margin:14px 0 12px!important;
-background:linear-gradient(90deg,#fff,#7dd3fc 60%,#c4b5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.hero p{font-size:16px;line-height:1.7;margin:0 0 20px;max-width:520px}
-.tag{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);
-border:1px solid var(--line);color:#7dd3fc;font-size:12px;font-weight:700;letter-spacing:2px}
-.types{display:flex;flex-wrap:wrap;gap:10px}.types span{padding:9px 16px;border-radius:999px;background:rgba(255,255,255,.08);
-border:1px solid var(--line);color:var(--text);font-size:13.5px;font-weight:600}
-@media(max-width:900px){.hero{grid-template-columns:1fr}}
-.mod .ico{width:56px;height:56px;border-radius:18px;font-size:26px;margin-bottom:14px}
-.mod h4{margin:0 0 6px!important;font-size:19px!important;font-weight:800!important}
-.mod p{margin:0 0 12px;font-size:13.5px;line-height:1.6;min-height:66px}
-[class*="st-key-card_mod"]{transition:.3s}[class*="st-key-card_mod"]:hover{transform:translateY(-6px);border-color:rgba(56,189,248,.6)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-[class*="st-key-card"] .grid2.tiles{grid-template-columns:1fr}
-.tile{display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;background:rgba(255,255,255,.06);
-border:1px solid var(--line);min-width:0}
-.tile b{display:block;color:#fff;font-size:17px;font-weight:800;line-height:1.15}.tile span{color:var(--muted);font-size:11.5px;font-weight:600}
-.ico{width:38px;height:38px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#07102a}
-.o{background:linear-gradient(135deg,#fdba74,#fb923c)}.v{background:linear-gradient(135deg,#c4b5fd,#8b7cff)}
-.gr{background:linear-gradient(135deg,#6ee7b7,#34d399)}.cy{background:linear-gradient(135deg,#7dd3fc,#38bdf8)}
-.feed{min-height:420px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border:2px dashed rgba(255,255,255,.16);
-border-radius:20px;color:var(--muted);font-weight:600;background:rgba(0,0,0,.18)}.feed div{font-size:46px}
-.ctitle{color:#fff;font-weight:700;font-size:16px;margin-bottom:14px}
-.logo{display:flex;align-items:center;gap:12px}.logo i{width:46px;height:46px;border-radius:15px;display:flex;align-items:center;justify-content:center;
-font-style:normal;font-size:22px;background:linear-gradient(135deg,#22c7a5,#38bdf8 55%,#8b7cff);box-shadow:0 0 24px rgba(56,189,248,.5)}
-.logo b{color:#fff;font-size:17px;font-weight:800;display:block}.logo span{color:var(--muted);font-size:11px;letter-spacing:1.6px}
+[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.foot{margin-top:36px;padding-top:14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;
+letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 </style>
 """, unsafe_allow_html=True)
 
 
-def html(markup):
-    st.markdown("\n".join(l.strip() for l in markup.splitlines() if l.strip()), unsafe_allow_html=True)
-
-
-def tiles(items, extra=""):
-    body = "".join(
-        f'<div class="tile"><div class="ico {c}">{i}</div><div><b>{b}</b><span>{s}</span></div></div>'
-        for c, i, b, s in items
-    )
-    return f'<div class="grid2 {extra}">{body}</div>'
-
-
-def card(area, title, sub, body):
-    return f'<div class="b-card {area}"><div class="b-title">{title}</div><div class="b-sub">{sub}</div>{body}</div>'
+def html(markup, target=st):
+    target.markdown("\n".join(l.strip() for l in markup.splitlines() if l.strip()), unsafe_allow_html=True)
 
 
 def go(p):
     st.session_state.nav = p
 
 
-def bracket(x, y, w, h, label, c=34):
-    k = 7
-    d = (f"M{x},{y+k}V{y}H{x+k} M{x+w-k},{y}H{x+w}V{y+k} "
-         f"M{x+w},{y+h-k}V{y+h}H{x+w-k} M{x+k},{y+h}H{x}V{y+h-k}")
-    return (f'<path d="{d}" stroke="#34d399" stroke-width="2" fill="none" stroke-linecap="round"/>'
-            f'<text x="{x}" y="{y-5}" fill="#34d399" font-size="9" font-weight="700">{label}</text>')
+def signal(state):
+    lit = {"stop": "r", "slow": "a", "go": "g"}.get(state)
+    return '<span class="signal">' + "".join(
+        f'<i class="{c if c == lit else ""}"></i>' for c in ("r", "a", "g")) + "</span>"
 
 
-def hero_art():
-    cars = [(187, 82, 26, 17, "Car"), (236, 122, 54, 42, "Truck"), (112, 172, 34, 58, "Motorcycle"),
-            (298, 178, 64, 48, "Car")]
-    body = "".join(
-        f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="6" fill="#2a3f80" stroke="#5b7be8" stroke-width="1.2"/>'
-        f'<rect x="{x+w*.15}" y="{y+h*.15}" width="{w*.7}" height="{h*.28}" rx="3" fill="#8fb2ff" opacity=".55"/>'
-        + bracket(x - 4, y - 4, w + 8, h + 8, lab)
-        for x, y, w, h, lab in cars
-    )
-    return f"""<svg viewBox="0 0 420 260" style="width:100%;border-radius:22px">
-      <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16265a"/><stop offset="1" stop-color="#0a1230"/></linearGradient></defs>
-      <rect width="420" height="260" fill="url(#bg)"/>
-      <polygon points="190,30 230,30 420,260 0,260" fill="#0d1636" stroke="#2a3f80"/>
-      <line x1="210" y1="30" x2="210" y2="260" stroke="#fff" stroke-opacity=".35" stroke-dasharray="10 10"/>
-      <line x1="200" y1="30" x2="95" y2="260" stroke="#fff" stroke-opacity=".25" stroke-dasharray="10 10"/>
-      <line x1="220" y1="30" x2="325" y2="260" stroke="#fff" stroke-opacity=".25" stroke-dasharray="10 10"/>
-      {body}</svg>"""
+def readout(slot, label, value, tone=""):
+    light = signal(tone) if tone else ""
+    html(f'<div class="ro {tone}"><div class="lbl">{label}</div><div class="v">{light}{value}</div></div>', slot)
 
 
-def head(title, sub):
-    html(f'<div class="head"><h2>{title}</h2><p>{sub}</p></div>')
+def ptitle(left, right=""):
+    html(f'<div class="ptitle"><div class="lbl"><b>{left}</b></div><div class="lbl">{right}</div></div>')
+
+
+def head(step, title, sub):
+    html(f'<div class="head"><div class="lbl">{step}</div><h2>{title}</h2><p>{sub}</p></div>')
 
 
 def feed(text):
-    return f'<div class="feed"><div>🎥</div>{text}</div>'
+    return f'<div class="feed">No signal<b>{text}</b></div>'
 
 
-SETTINGS = [("o", "◎", f"{CONF_THRESHOLD:.2f}", "Confidence"), ("v", "▣", f"{IMAGE_SIZE}px", "Input size"),
-            ("gr", "⬡", len(CLASS_NAMES), "Classes"), ("cy", "⇄", "ByteTrack", "Tracker")]
+def cam_art():
+    boxes = [(188, 96, 30, 20, "CAR 0.91"), (246, 134, 58, 44, "TRUCK 0.87"),
+             (116, 182, 30, 50, "MOTO 0.74"), (300, 190, 66, 50, "CAR 0.95")]
+    body = ""
+    for x, y, w, h, lab in boxes:
+        body += (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="4" fill="#262b31"/>'
+                 f'<rect x="{x + w * .15}" y="{y + h * .15}" width="{w * .7}" height="{h * .25}" rx="2" fill="#4a525b"/>'
+                 f'<rect x="{x - 4}" y="{y - 4}" width="{w + 8}" height="{h + 8}" fill="none" stroke="#f5a524" stroke-width="1.5"/>'
+                 f'<rect x="{x - 4}" y="{y - 16}" width="{len(lab) * 6 + 8}" height="12" fill="#f5a524"/>'
+                 f'<text x="{x}" y="{y - 7}" fill="#17130a" font-size="8.5" font-family="monospace" font-weight="700">{lab}</text>')
+    return f"""<div class="cam"><div class="bar"><span>CAM 01 · NORTH APPROACH</span><span class="rec">REC</span></div>
+      <svg viewBox="0 0 420 270">
+      <rect width="420" height="270" fill="#0d0f11"/>
+      <polygon points="186,40 234,40 420,270 0,270" fill="#14171a"/>
+      <line x1="210" y1="40" x2="210" y2="270" stroke="#ece9e2" stroke-opacity=".3" stroke-dasharray="10 10"/>
+      <line x1="198" y1="40" x2="90" y2="270" stroke="#ece9e2" stroke-opacity=".2" stroke-dasharray="10 10"/>
+      <line x1="222" y1="40" x2="330" y2="270" stroke="#ece9e2" stroke-opacity=".2" stroke-dasharray="10 10"/>
+      <line x1="0" y1="168" x2="420" y2="168" stroke="#3ecf8e" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text x="8" y="162" fill="#3ecf8e" font-size="8.5" font-family="monospace">COUNTING LINE</text>
+      {body}</svg></div>"""
+
+
+def settings_panel(key):
+    with st.container(key=f"panel_{key}_settings"):
+        ptitle("Model settings")
+        html('<div class="kv" style="border:0;margin:0;padding:0">' + "".join(
+            f"<div><span>{k}</span><b>{v}</b></div>" for k, v in
+            [("Confidence", f"{CONF_THRESHOLD:.2f}"), ("Input size", f"{IMAGE_SIZE}px"),
+             ("Classes", len(CLASS_NAMES)), ("Tracker", "ByteTrack")]) + "</div>")
 
 
 def result_cards(cats, report, key):
     a, b = st.columns(2, gap="medium")
-    with a, st.container(key=f"card_{key}_chart"):
-        html('<div class="ctitle">Vehicle Count Chart</div>')
-        st.bar_chart(cats.set_index("Vehicle Type"), color="#38bdf8")
-    with b, st.container(key=f"card_{key}_table"):
-        html('<div class="ctitle">Traffic Report</div>')
+    with a, st.container(key=f"panel_{key}_chart"):
+        ptitle("Vehicles by type", "line crossings")
+        st.bar_chart(cats.set_index("Vehicle Type"), color="#f5a524")
+    with b, st.container(key=f"panel_{key}_table"):
+        ptitle("Traffic report")
         st.dataframe(report, width="stretch", hide_index=True)
-    st.download_button("⬇  Download CSV Report", report.to_csv(index=False).encode("utf-8"),
+    st.download_button("Download CSV report", report.to_csv(index=False).encode("utf-8"),
                        "traffic_report.csv", "text/csv", key=f"{key}_download")
 
 
-def live_page(key, title, sub, source, label):
-    head(title, sub)
-    start = st.button(f"▶  Start {title}", key=key)
-    left, right = st.columns([3, 1.15], gap="medium")
-    with left, st.container(key=f"card_{key}_feed"):
-        html(f'<div class="ctitle">● Live Feed · {title}</div>')
+def summary_row(saved):
+    c = st.columns(3, gap="medium")
+    readout(c[0], "Total vehicles crossed", saved["total"])
+    readout(c[1], "Currently visible", saved["visible"])
+    readout(c[2], "Traffic density", saved["density"], DENSITY_TONE.get(saved["density"], ""))
+
+
+def live_page(key, step, title, sub, source, label):
+    head(step, title, sub)
+    start = st.button(f"Start {title.split()[-1].lower()}", key=key)
+    left, right = st.columns([3, 1.1], gap="medium")
+    with left, st.container(key=f"panel_{key}_feed"):
+        ptitle(f"Live feed · {title}", "CAM 01")
         video = st.empty()
-        video.markdown(feed(f"Press Start to begin"), unsafe_allow_html=True)
+        video.markdown(feed("Press start to run the model"), unsafe_allow_html=True)
     with right:
         metric = st.empty()
-        metric.metric(label, 0)
-        with st.container(key=f"card_{key}_info"):
-            html('<div class="ctitle">Settings</div>' + tiles(SETTINGS, "tiles"))
+        readout(metric, label, 0)
+        settings_panel(key)
     if start:
         try:
             with st.spinner(f"Running {title.lower()}..."):
                 for frame, count in source():
                     video.image(frame, channels="BGR", width="stretch")
-                    metric.metric(label, count)
+                    readout(metric, label, count)
                     time.sleep(0.02)
-            st.success(f"{title} completed!")
+            st.success(f"{title} completed.")
         except Exception as e:
             st.error(f"{title} failed: {e}")
 
 
 with st.sidebar:
-    html('<div class="logo"><i>🚦</i><div><b>AI Traffic</b><span>MONITORING</span></div></div>')
-    st.write("")
-    page = st.radio("Navigation", list(PAGES), format_func=lambda p: f"{PAGES[p]}   {p}", label_visibility="collapsed", key="nav")
-    st.write("")
-    html('<div class="chip"><span class="dot"></span>Dashboard Online</div>')
-    st.caption("Engine · YOLO + ByteTrack · v1.0")
+    html(f'<div class="brand">{signal("go")}<div><b>Traffic Control</b><span>YOLO · BYTETRACK</span></div></div>')
+    page = st.radio("Navigation", PAGES, label_visibility="collapsed", key="nav")
+    html('<div class="kv">' + "".join(
+        f"<div><span>{k}</span><b>{v}</b></div>" for k, v in
+        [("Confidence", f"{CONF_THRESHOLD:.2f}"), ("Input size", f"{IMAGE_SIZE}px"),
+         ("Classes", len(CLASS_NAMES)), ("Tracker", "ByteTrack")]) + "</div>")
 
 now = datetime.now()
 html(f"""
-<div class="topbar">
-  <div><div class="time">{now:%I:%M}<small>{now:%p}</small></div><div class="date">{now:%A | %d %B %Y}</div></div>
-  <div class="pill"><span class="dot"></span>Active module &nbsp;·&nbsp; <b>{page}</b></div>
-  <div style="display:flex;gap:12px;align-items:center"><div class="chip"><span class="dot"></span>AI ENGINE READY</div><div class="avatar">AI</div></div>
+<div class="top">
+  <div class="crumb">Control room / <b>{page}</b></div>
+  <div class="status"><span>{now:%a %d %b %Y}</span><span class="clock">{now:%H:%M}</span><span class="led">ENGINE READY</span></div>
 </div>""")
 
 
 if page == "Overview":
-
-    chips = "".join(f"<span>{CLASS_ICONS[n]} {n}</span>" for n in CLASS_NAMES.values())
+    classes = "".join(f"<span>{n.upper()}</span>" for n in CLASS_NAMES.values())
     html(f"""
-    <div class="b-card hero">
+    <div class="hero">
       <div>
-        <div class="tag"><span class="dot"></span>SMART CITY · AI MONITORING</div>
-        <h1>See every vehicle.<br>Understand every road.</h1>
-        <p>Detect, track and count cars, motorcycles, buses and trucks from traffic video,
-        then turn the numbers into a congestion report.</p>
-        <div class="types">{chips}</div>
+        <div class="lbl">Smart-city traffic monitoring</div>
+        <h1>Every vehicle,<br><em>counted</em> and tracked.</h1>
+        <p>Run YOLO on traffic video to detect cars, motorcycles, buses and trucks, follow each one with
+        ByteTrack, count line crossings and rate how congested the road is.</p>
+        <div class="classes">{classes}</div>
       </div>
-      <div>{hero_art()}</div>
+      {cam_art()}
     </div>""")
 
     modules = [
-        ("Vehicle Detection", "gr", "◉", "Detection", "Find and label every vehicle in each frame of the video."),
-        ("Vehicle Tracking", "v", "⌖", "Tracking", "Give each vehicle a unique ID and follow it across frames."),
-        ("Traffic Analytics", "o", "▥", "Analytics", "Count vehicles crossing the line and rate the traffic density."),
-        ("Reports", "cy", "▤", "Reports", "Review the latest results and download them as a CSV file."),
+        ("Vehicle Detection", "01", "Detection", "Find and label every vehicle in each frame of the video."),
+        ("Vehicle Tracking", "02", "Tracking", "Give each vehicle a unique ID and follow it across frames."),
+        ("Traffic Analytics", "03", "Analytics", "Count vehicles crossing the line and rate the traffic density."),
+        ("Reports", "04", "Reports", "Review the latest results and download them as a CSV file."),
     ]
-    for col, (target, color, icon, title, text) in zip(st.columns(4, gap="medium"), modules):
-        with col, st.container(key=f"card_mod_{title.lower()}"):
-            html(f'<div class="mod"><div class="ico {color}">{icon}</div><h4>{title}</h4><p>{text}</p></div>')
-            st.button(f"Open {title}  →", key=f"open_{title}", on_click=go, args=(target,), width="stretch")
+    for col, (target, num, title, text) in zip(st.columns(4, gap="medium"), modules):
+        with col, st.container(key=f"panel_mod_{title.lower()}"):
+            html(f'<div class="mod"><div class="num">{num}</div><h4>{title}</h4><p>{text}</p></div>')
+            st.button("Open →", key=f"open_{title}", on_click=go, args=(target,), width="stretch")
 
     st.write("")
     saved = st.session_state.traffic_report
     if saved is None:
         st.info("No report yet. Run Traffic Analytics to generate your first traffic report.")
     else:
-        html('<div class="ctitle">Latest traffic report</div>')
-        for col, (label, key) in zip(st.columns(3, gap="medium"),
-                                     [("Total Vehicles Crossed", "total"), ("Currently Visible", "visible"),
-                                      ("Traffic Density", "density")]):
-            col.metric(label, saved[key])
+        html('<div class="lbl" style="margin-bottom:10px">Latest traffic report</div>')
+        summary_row(saved)
 
 elif page == "Vehicle Detection":
-    live_page("detect", "Vehicle Detection", "Detect and classify cars, motorcycles, buses and trucks using YOLO.",
-              detect_vehicles, "Vehicles Detected")
+    live_page("detect", "Module 01", "Vehicle Detection",
+              "Detect and classify cars, motorcycles, buses and trucks using YOLO.",
+              detect_vehicles, "Vehicles detected")
 
 elif page == "Vehicle Tracking":
-    live_page("tracking", "Vehicle Tracking", "Follow every vehicle with a unique tracking ID using ByteTrack.",
-              track_vehicles, "Currently Tracked Vehicles")
+    live_page("tracking", "Module 02", "Vehicle Tracking",
+              "Follow every vehicle with a unique tracking ID using ByteTrack.",
+              track_vehicles, "Currently tracked")
 
 elif page == "Traffic Analytics":
-    head("Traffic Analytics", "Count vehicles crossing the line and estimate traffic density.")
-    start = st.button("▶  Start Traffic Analysis", key="analytics")
+    head("Module 03", "Traffic Analytics", "Count vehicles crossing the line and estimate traffic density.")
+    start = st.button("Start analysis", key="analytics")
 
-    left, right = st.columns([3, 1.15], gap="medium")
-    with left, st.container(key="card_analytics_feed"):
-        html('<div class="ctitle">● Live Feed · Analytics</div>')
+    left, right = st.columns([3, 1.1], gap="medium")
+    with left, st.container(key="panel_analytics_feed"):
+        ptitle("Live feed · Traffic Analytics", "CAM 01")
         video = st.empty()
-        video.markdown(feed("Press Start to begin traffic analysis"), unsafe_allow_html=True)
+        video.markdown(feed("Press start to run traffic analysis"), unsafe_allow_html=True)
     with right:
         slots = {k: st.empty() for k in ("total", "visible", "density")}
-        labels = {"total": "Total Vehicles Crossed", "visible": "Currently Visible", "density": "Traffic Density"}
-        for k, s in slots.items():
-            s.metric(labels[k], "—" if k == "density" else 0)
+        labels = {"total": "Total vehicles crossed", "visible": "Currently visible", "density": "Traffic density"}
+
+        def show(stats):
+            for k, s in slots.items():
+                v = stats.get(k, "—")
+                readout(s, labels[k], v, DENSITY_TONE.get(v, "") if k == "density" else "")
+
+        show({"total": 0, "visible": 0})
 
     if start:
         stats = None
@@ -290,14 +330,13 @@ elif page == "Traffic Analytics":
             with st.spinner("Analysing traffic video..."):
                 for frame, stats in count_vehicles():
                     video.image(frame, channels="BGR", width="stretch")
-                    for k, s in slots.items():
-                        s.metric(labels[k], stats[k])
+                    show(stats)
                     time.sleep(0.02)
 
             if stats is None:
                 st.warning("No video frames were processed.")
             else:
-                st.success("Traffic analysis completed successfully!")
+                st.success("Traffic analysis completed.")
                 cats = pd.DataFrame({
                     "Vehicle Type": ["Cars", "Motorcycles", "Buses", "Trucks"],
                     "Vehicles Counted": [stats["Car"], stats["Motorcycle"], stats["Bus"], stats["Truck"]],
@@ -313,26 +352,20 @@ elif page == "Traffic Analytics":
                     "categories": cats, "report_data": report,
                 }
                 for col, (name, n) in zip(st.columns(4, gap="medium"), cats.values):
-                    col.metric(name, n)
-                st.write("")
+                    readout(col, name, n)
                 result_cards(cats, report, "analytics")
         except Exception as e:
             st.error(f"Traffic analysis failed: {e}")
 
 elif page == "Reports":
-    head("Traffic Analysis Reports", "View and download your most recent traffic report.")
+    head("Module 04", "Traffic Reports", "View and download your most recent traffic report.")
     saved = st.session_state.traffic_report
 
     if saved is None:
-        st.info("No report available yet. Please run Traffic Analytics first.")
+        st.info("No report available yet. Run Traffic Analytics first.")
     else:
-        st.success("Traffic report generated successfully!")
-        for col, (label, key) in zip(st.columns(3, gap="medium"),
-                                     [("Total Vehicles Crossed", "total"), ("Currently Visible", "visible"),
-                                      ("Traffic Density", "density")]):
-            col.metric(label, saved[key])
+        summary_row(saved)
         st.write("")
         result_cards(saved["categories"], saved["report_data"], "report")
 
-st.write("")
-st.caption("AI Traffic Monitoring System | Python • YOLO • OpenCV • ByteTrack • Streamlit")
+html('<div class="foot">Traffic Control Room · Python · YOLO · OpenCV · ByteTrack · Streamlit</div>')
