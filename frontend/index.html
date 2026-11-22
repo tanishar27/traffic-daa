@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traffic Control Room</title>
+  <meta name="description" content="Live vehicle detection, tracking and traffic analytics with YOLO and ByteTrack.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 32'><rect width='16' height='32' rx='4' fill='%23090a0b'/><circle cx='8' cy='7' r='4' fill='%23ef5350'/><circle cx='8' cy='16' r='4' fill='%23f5a524'/><circle cx='8' cy='25' r='4' fill='%233ecf8e'/></svg>">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <span class="signal" id="brandSignal"><i></i><i></i><i class="g"></i></span>
+      <div><b>Traffic Control</b><span>YOLO · BYTETRACK</span></div>
+    </div>
+    <nav class="nav" id="nav">
+      <a href="#overview" data-view="overview"><em>01</em>Overview</a>
+      <a href="#detect" data-view="detect"><em>02</em>Vehicle Detection</a>
+      <a href="#track" data-view="track"><em>03</em>Vehicle Tracking</a>
+      <a href="#count" data-view="count"><em>04</em>Traffic Analytics</a>
+      <a href="#reports" data-view="reports"><em>05</em>Reports</a>
+    </nav>
+    <div class="kv" id="settings">
+      <div><span>Confidence</span><b data-k="conf">—</b></div>
+      <div><span>Input size</span><b data-k="imgsz">—</b></div>
+      <div><span>Classes</span><b data-k="classes">—</b></div>
+      <div><span>Tracker</span><b data-k="tracker">—</b></div>
+    </div>
+    <form class="backend" id="backendForm">
+      <label class="lbl" for="apiUrl">Backend URL</label>
+      <input id="apiUrl" type="url" placeholder="https://xxxx.trycloudflare.com" spellcheck="false" autocomplete="off">
+      <button type="submit">Connect</button>
+      <p class="hint">Paste the tunnel URL printed on the laptop running the model.</p>
+    </form>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div class="crumb">Control room / <b id="crumb">Overview</b></div>
+      <div class="status">
+        <span id="date"></span><span class="clock" id="clock"></span>
+        <span class="led off" id="led">BACKEND OFFLINE</span>
+      </div>
+    </header>
+
+    <!-- OVERVIEW -->
+    <section class="view" data-view="overview">
+      <div class="hero">
+        <div>
+          <div class="lbl">Smart-city traffic monitoring</div>
+          <h1>Every vehicle,<br><em>counted</em> and tracked.</h1>
+          <p>Run YOLO on traffic video to detect cars, motorcycles, buses and trucks, follow each one with
+            ByteTrack, count line crossings and rate how congested the road is.</p>
+          <div class="classes"><span>CAR</span><span>MOTORCYCLE</span><span>BUS</span><span>TRUCK</span></div>
+        </div>
+        <div class="cam">
+          <div class="bar"><span>CAM 01 · NORTH APPROACH</span><span class="rec">REC</span></div>
+          <svg viewBox="0 0 420 270" aria-hidden="true">
+            <rect width="420" height="270" fill="#0d0f11"/>
+            <polygon points="186,40 234,40 420,270 0,270" fill="#14171a"/>
+            <line x1="210" y1="40" x2="210" y2="270" stroke="#ece9e2" stroke-opacity=".3" stroke-dasharray="10 10"/>
+            <line x1="198" y1="40" x2="90" y2="270" stroke="#ece9e2" stroke-opacity=".2" stroke-dasharray="10 10"/>
+            <line x1="222" y1="40" x2="330" y2="270" stroke="#ece9e2" stroke-opacity=".2" stroke-dasharray="10 10"/>
+            <line x1="0" y1="168" x2="420" y2="168" stroke="#3ecf8e" stroke-width="1.5" stroke-dasharray="4 4"/>
+            <text x="8" y="162" fill="#3ecf8e" font-size="8.5" font-family="monospace">COUNTING LINE</text>
+            <g id="heroBoxes"></g>
+          </svg>
+        </div>
+      </div>
+      <div class="mods">
+        <a class="panel mod" href="#detect"><div class="num">01</div><h4>Detection</h4><p>Find and label every vehicle in each frame of the video.</p><span class="ghost">Open →</span></a>
+        <a class="panel mod" href="#track"><div class="num">02</div><h4>Tracking</h4><p>Give each vehicle a unique ID and follow it across frames.</p><span class="ghost">Open →</span></a>
+        <a class="panel mod" href="#count"><div class="num">03</div><h4>Analytics</h4><p>Count vehicles crossing the line and rate the traffic density.</p><span class="ghost">Open →</span></a>
+        <a class="panel mod" href="#reports"><div class="num">04</div><h4>Reports</h4><p>Review the latest results and download them as a CSV file.</p><span class="ghost">Open →</span></a>
+      </div>
+      <div class="lbl gap">Latest traffic report</div>
+      <div id="overviewReport"></div>
+    </section>
+
+    <!-- LIVE PAGES (detect / track / count share one layout) -->
+    <section class="view" data-view="live">
+      <div class="head">
+        <div class="lbl" id="liveStep">Module 01</div>
+        <h2 id="liveTitle">Vehicle Detection</h2>
+        <p id="liveSub"></p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="startBtn">Start</button>
+        <button class="btn ghostbtn" id="stopBtn" disabled>Stop</button>
+        <span class="msg" id="liveMsg"></span>
+      </div>
+      <div class="live">
+        <div class="panel">
+          <div class="ptitle"><span class="lbl"><b id="feedTitle">Live feed</b></span><span class="lbl" id="fps">CAM 01</span></div>
+          <div class="feed" id="feed">
+            <img id="feedImg" alt="Annotated traffic video from the backend" hidden>
+            <div class="nosig" id="nosig">No signal<b>Press start to run the model</b></div>
+          </div>
+        </div>
+        <div id="readouts"></div>
+      </div>
+      <div id="results"></div>
+    </section>
+
+    <!-- REPORTS -->
+    <section class="view" data-view="reports">
+      <div class="head">
+        <div class="lbl">Module 04</div>
+        <h2>Traffic Reports</h2>
+        <p>View and download your most recent traffic report.</p>
+      </div>
+      <div id="reportBody"></div>
+    </section>
+
+    <footer class="foot">Traffic Control Room · Python · YOLO · OpenCV · ByteTrack · FastAPI</footer>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
