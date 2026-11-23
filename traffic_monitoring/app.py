@@ -862,7 +862,8 @@ def live_page(key, step, title, sub, source, label):
                     video.image(
                         frame,
                         channels="BGR",
-                        width="stretch"
+                        width="stretch",
+                        output_format="JPEG"
                     )
 
                     # Update the vehicle count
