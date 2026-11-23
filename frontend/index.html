@@ -25,6 +25,18 @@
       <a href="#count" data-view="count"><em>04</em>Traffic Analytics</a>
       <a href="#reports" data-view="reports"><em>05</em>Reports</a>
     </nav>
+    <section class="source" id="source" aria-labelledby="srcLbl">
+      <div class="lbl" id="srcLbl"><b>Video source</b></div>
+      <label class="btn upbtn" id="upBtn">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Upload video
+        <input type="file" id="videoFile" accept="video/*,.mp4,.avi,.mov,.mkv" hidden>
+      </label>
+      <p class="upnote">or drag &amp; drop a file here<br>MP4 · AVI · MOV · MKV</p>
+      <label class="lbl" for="videoSel">Run modules on</label>
+      <select id="videoSel" disabled><option>Loading…</option></select>
+      <p class="msg" id="upMsg" role="status"></p>
+    </section>
     <div class="kv" id="settings">
       <div><span>Confidence</span><b data-k="conf">—</b></div>
       <div><span>Input size</span><b data-k="imgsz">—</b></div>
@@ -82,6 +94,7 @@
         <div class="lbl" id="liveStep">Module 01</div>
         <h2 id="liveTitle">Vehicle Detection</h2>
         <p id="liveSub"></p>
+        <p class="using">Video: <b id="liveVideo">—</b> <span>· change it under Video source</span></p>
       </div>
       <div class="actions">
         <button class="btn" id="startBtn">Start</button>

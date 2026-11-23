@@ -5,7 +5,9 @@ Run from this folder, then open http://localhost:8000:
 
 Endpoints
     GET  /health          backend status + model settings
-    POST /start/{mode}    start a job: mode = detect | track | count
+    GET  /videos          videos available to process (traffic_monitoring/videos)
+    POST /videos?name=    upload a video (raw file bytes as the request body)
+    POST /start/{mode}    start a job: mode = detect | track | count, optional ?video=name
     POST /stop            stop the running job
     GET  /stream          MJPEG stream of annotated frames (use as <img src>)
     GET  /stats           live numbers for the running / last job
@@ -19,14 +21,14 @@ import time
 from pathlib import Path
 
 import cv2
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from vehicle_processing import (
-    CLASS_NAMES, CONF_THRESHOLD, IMAGE_SIZE,
-    count_vehicles, detect_vehicles, track_vehicles,
+    CLASS_NAMES, CONF_THRESHOLD, DEFAULT_VIDEO, IMAGE_SIZE, VIDEO_DIR, VIDEO_TYPES,
+    count_vehicles, detect_vehicles, list_videos, track_vehicles,
 )
 
 SOURCES = {"detect": detect_vehicles, "track": track_vehicles, "count": count_vehicles}
@@ -46,6 +48,7 @@ class Job:
         self.thread = None
         self.stop_event = threading.Event()
         self.mode = None
+        self.video = None
         self.running = False
         self.error = None
         self.frame = None      # latest JPEG bytes
@@ -59,7 +62,7 @@ class Job:
         with self.lock:
             elapsed = time.time() - self.started if self.started else 0
             return {
-                "mode": self.mode, "running": self.running, "error": self.error,
+                "mode": self.mode, "video": self.video, "running": self.running, "error": self.error,
                 "stopped": self.stop_event.is_set(),
                 "frames": self.frames, "fps": round(self.frames / elapsed, 1) if elapsed else 0,
                 "stats": dict(self.stats),
@@ -69,8 +72,8 @@ class Job:
 job = Job()
 
 
-def _run(mode):
-    gen = SOURCES[mode]()
+def _run(mode, video):
+    gen = SOURCES[mode](video)
     try:
         for frame, value in gen:
             if job.stop_event.is_set():
@@ -84,7 +87,7 @@ def _run(mode):
                 job.stats = dict(value) if isinstance(value, dict) else {"count": value}
         if mode == "count" and job.stats and not job.stop_event.is_set():
             with job.lock:
-                job.report = {**job.stats, "finished_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+                job.report = {**job.stats, "video": video, "finished_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     except Exception as e:  # surface model/video errors to the frontend
         with job.lock:
             job.error = str(e)
@@ -106,16 +109,51 @@ def health():
             "classes": list(CLASS_NAMES.values()), "tracker": "ByteTrack"}
 
 
+@app.get("/videos")
+def videos():
+    return {"videos": list_videos(), "default": DEFAULT_VIDEO}
+
+
+@app.post("/videos")
+async def upload_video(request: Request, name: str):
+    """Save the request body as a new video. The file is streamed to disk, so large videos are fine."""
+    path = Path(Path(name).name)
+    if path.suffix.lower() not in VIDEO_TYPES:
+        raise HTTPException(400, f"Unsupported file type. Use one of: {', '.join(sorted(VIDEO_TYPES))}")
+    VIDEO_DIR.mkdir(exist_ok=True)
+    target, n = VIDEO_DIR / path.name, 1
+    while target.exists():  # never overwrite an existing video
+        target, n = VIDEO_DIR / f"{path.stem}-{n}{path.suffix}", n + 1
+    size = 0
+    with open(target, "wb") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+            size += len(chunk)
+    if not size:
+        target.unlink()
+        raise HTTPException(400, "The uploaded file is empty.")
+    cap = cv2.VideoCapture(str(target))
+    ok = cap.isOpened() and cap.read()[0]
+    cap.release()
+    if not ok:
+        target.unlink()
+        raise HTTPException(400, "OpenCV could not read that file as a video.")
+    return {"name": target.name, "videos": list_videos()}
+
+
 @app.post("/start/{mode}")
-def start(mode: str):
+def start(mode: str, video: str | None = None):
     if mode not in SOURCES:
         raise HTTPException(404, f"Unknown mode '{mode}'. Use one of: {', '.join(SOURCES)}")
+    video = video or DEFAULT_VIDEO
+    if video not in list_videos():
+        raise HTTPException(404, f"Video '{video}' not found in traffic_monitoring/videos.")
     _stop_current()
     with job.lock:
         job.stop_event = threading.Event()
-        job.mode, job.running, job.error = mode, True, None
+        job.mode, job.video, job.running, job.error = mode, video, True, None
         job.frame, job.frames, job.stats, job.started = None, 0, {}, time.time()
-        job.thread = threading.Thread(target=_run, args=(mode,), daemon=True)
+        job.thread = threading.Thread(target=_run, args=(mode, video), daemon=True)
         job.thread.start()
     return job.snapshot()
 

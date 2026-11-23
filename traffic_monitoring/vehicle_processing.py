@@ -16,7 +16,7 @@ VIDEO_TYPES = {".mp4", ".avi", ".mov", ".mkv"}
 VEHICLE_CLASSES = [2, 3, 5, 7]
 CLASS_NAMES = {2: "Car", 3: "Motorcycle", 5: "Bus", 7: "Truck"}
 
-CONF_THRESHOLD = 0.20
+CONF_THRESHOLD = 0.50
 IMAGE_SIZE = 640
 FRAME_SKIP = 2
 MAX_WIDTH = 960

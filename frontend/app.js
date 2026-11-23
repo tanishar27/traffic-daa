@@ -25,6 +25,8 @@ const TYPES = [["Car", "Cars"], ["Motorcycle", "Motorcycles"], ["Bus", "Buses"],
 const TONE = { Low: "go", Medium: "slow", High: "stop" };
 
 let online = false;
+let videosLoaded = false;
+let uploading = false;
 let view = "overview";
 let pollTimer = null;
 
@@ -55,7 +57,7 @@ function summaryRow(r) {
 }
 
 function reportRows(r) {
-  return [["Total Vehicles Crossed", r.total], ["Currently Visible", r.visible], ["Traffic Density", r.density],
+  return [...(r.video ? [["Video", r.video]] : []), ["Total Vehicles Crossed", r.total], ["Currently Visible", r.visible], ["Traffic Density", r.density],
     ...TYPES.map(([k, name]) => [name, r[k]])];
 }
 
@@ -75,7 +77,8 @@ function resultsBlock(r) {
 }
 
 function downloadCsv(r) {
-  const csv = "Metric,Value\n" + reportRows(r).map(([m, v]) => `${m},${v}`).join("\n") + "\n";
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = "Metric,Value\n" + reportRows(r).map(([m, v]) => `${cell(m)},${cell(v)}`).join("\n") + "\n";
   const a = Object.assign(document.createElement("a"), {
     href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: "traffic_report.csv",
   });
@@ -113,6 +116,7 @@ async function checkHealth() {
     led.textContent = "ENGINE READY";
     const s = { conf: h.conf.toFixed(2), imgsz: `${h.imgsz}px`, classes: h.classes.length, tracker: h.tracker };
     $$("#settings b").forEach((b) => { b.textContent = s[b.dataset.k]; });
+    if (!videosLoaded) await loadVideos();
   } catch {
     online = false;
     led.className = "led off";
@@ -128,6 +132,10 @@ function updateButtons() {
   if (!MODES[view]) return;
   $("#startBtn").disabled = !online || running;
   $("#stopBtn").disabled = !online || !running;
+  const busy = !online || running || uploading;
+  $("#videoSel").disabled = busy || !videosLoaded;
+  $("#upBtn").classList.toggle("off", busy);
+  $("#videoFile").disabled = busy;
   if (!online && !running) setMsg("Backend offline: start the server with  uvicorn server:app --port 8000  in traffic_monitoring/.", "err");
   else if ($("#liveMsg").classList.contains("err") && !running) setMsg("");
 }
@@ -170,6 +178,49 @@ function setupLive(mode) {
   updateButtons();
 }
 
+/* ---------- videos ---------- */
+
+async function loadVideos(select) {
+  const { videos, default: def } = await api("/videos");
+  const want = select || store.get("video");
+  const current = videos.includes(want) ? want : def;
+  $("#videoSel").innerHTML = videos.map((v) =>
+    `<option value="${esc(v)}"${v === current ? " selected" : ""}>${esc(v)}${v === def ? " (demo)" : ""}</option>`).join("");
+  store.set("video", current);
+  $("#liveVideo").textContent = current;
+  videosLoaded = true;
+  updateButtons();
+}
+
+function upload(file) {
+  uploading = true;
+  updateButtons();
+  const msg = $("#upMsg");
+  msg.className = "msg";
+  const xhr = new XMLHttpRequest();  // XHR, not fetch, so we get upload progress
+  xhr.open("POST", `${API}/videos?name=${encodeURIComponent(file.name)}`);
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) msg.textContent = `Uploading ${file.name}… ${Math.round((e.loaded / e.total) * 100)}%`;
+  };
+  const done = (text, cls) => {
+    uploading = false;
+    $("#videoFile").value = "";
+    msg.textContent = text;
+    msg.className = "msg " + cls;
+    updateButtons();
+  };
+  xhr.onload = async () => {
+    let body = {};
+    try { body = JSON.parse(xhr.responseText); } catch { /* not json */ }
+    if (xhr.status !== 200) return done(`Upload failed: ${body.detail || xhr.statusText}`, "err");
+    await loadVideos(body.name);
+    done(`Uploaded ${body.name}. It is selected; press start to run it.`, "ok");
+  };
+  xhr.onerror = () => done("Upload failed: could not reach the server.", "err");
+  msg.textContent = `Uploading ${file.name}…`;
+  xhr.send(file);
+}
+
 async function start() {
   const mode = view;
   try {
@@ -177,7 +228,8 @@ async function start() {
     updateButtons();
     $("#results").innerHTML = "";
     setMsg("Loading model…");
-    await api(`/start/${mode}`, { method: "POST" });
+    const video = $("#videoSel").value;
+    await api(`/start/${mode}?video=${encodeURIComponent(video)}`, { method: "POST" });
     const img = $("#feedImg");
     img.src = `${API}/stream?t=${Date.now()}`;
     img.hidden = false;
@@ -203,7 +255,7 @@ function poll(mode) {
     renderLiveReadouts(mode, s.stats);
     if (s.frames) {
       $("#fps").textContent = `${s.frames} frames · ${s.fps} fps`;
-      setMsg(`Running ${MODES[mode].title.toLowerCase()}…`);
+      setMsg(`Running ${MODES[mode].title.toLowerCase()} on ${s.video}…`);
     }
     if (s.running) return poll(mode);
 
@@ -278,6 +330,21 @@ function tick() {
 
 /* ---------- init ---------- */
 $("#startBtn").addEventListener("click", start);
+$("#videoSel").addEventListener("change", (e) => {
+  store.set("video", e.target.value);
+  $("#liveVideo").textContent = e.target.value;
+});
+const source = $("#source");
+["dragenter", "dragover"].forEach((t) => source.addEventListener(t, (e) => {
+  e.preventDefault();
+  if (!$("#videoFile").disabled) source.classList.add("drag");
+}));
+["dragleave", "drop"].forEach((t) => source.addEventListener(t, (e) => {
+  e.preventDefault();
+  source.classList.remove("drag");
+  if (t === "drop" && !$("#videoFile").disabled && e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]);
+}));
+$("#videoFile").addEventListener("change", (e) => { if (e.target.files[0]) upload(e.target.files[0]); });
 $("#stopBtn").addEventListener("click", stop);
 window.addEventListener("hashchange", route);
 

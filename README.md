@@ -12,8 +12,9 @@ Built on a fork of [Ultralytics](https://github.com/ultralytics/ultralytics).
 ## How it works
 
 1. **Detect.** Each frame goes through the pretrained `yolo26n.pt` model (trained on COCO). Only four
-   COCO classes are kept: car, motorcycle, bus and truck. Confidence threshold is 0.20 so small and
-   distant vehicles are still found.
+   COCO classes are kept: car, motorcycle, bus and truck. Only detections with confidence of at least
+   0.50 are kept, which cuts false positives; very small or distant vehicles may be missed. Change
+   `CONF_THRESHOLD` in `vehicle_processing.py` to adjust this.
 2. **Track.** ByteTrack links detections between frames and gives each vehicle a stable ID.
 3. **Count.** A horizontal line is drawn at half the frame height. When a tracked vehicle's box centre
    moves from one side of the line to the other, it is counted once; its ID is remembered so it is
@@ -53,7 +54,7 @@ cd traffic_monitoring
 uvicorn server:app --port 8000
 ```
 
-Then open <http://localhost:8000>. Pick a module in the sidebar and press **Start**. The annotated
+Then open <http://localhost:8000>. Choose a video under **Video source** in the sidebar, pick a module and press **Start**. The annotated
 video streams into the page while the numbers update live; **Traffic Analytics** saves a report you
 can view and download as CSV under **Reports**.
 
@@ -64,6 +65,11 @@ Browser (frontend/: HTML + CSS + JS)
 localhost:8000  FastAPI (server.py) ──► vehicle_processing.py ──► YOLO + ByteTrack
 ```
 
+**Using your own video:** in the left panel under **Video source**, press **Upload custom video** (or drop a file on that box) and pick an `.mp4`, `.avi`,
+`.mov` or `.mkv` file. It is saved into `traffic_monitoring/videos/` and selected in the **Video**
+list. Every module then runs on the selected video. Uploaded videos stay on your computer and are not committed (`*.mp4` is git-ignored). To remove
+one, delete it from that folder.
+
 If the page says "Backend offline", the server isn't running; start it with the command above.
 
 ## Backend API
@@ -71,7 +77,9 @@ If the page says "Backend offline", the server isn't running; start it with the 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health` | Backend status and model settings |
-| `POST /start/{detect\|track\|count}` | Start a run (stops any run already going) |
+| `GET /videos` | Videos available in `traffic_monitoring/videos/` |
+| `POST /videos?name=<file>` | Upload a video (the request body is the file) |
+| `POST /start/{detect\|track\|count}?video=<file>` | Start a run on a video, default the demo (stops any run already going) |
 | `POST /stop` | Stop the current run |
 | `GET /stream` | Live annotated video as an MJPEG stream (used as an `<img>` source) |
 | `GET /stats` | Live numbers for the current or last run |
