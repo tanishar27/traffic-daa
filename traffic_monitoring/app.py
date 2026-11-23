@@ -857,7 +857,7 @@ def live_page(key, step, title, sub, source, label):
             with st.spinner(f"Running {title.lower()}..."):
 
                 for frame, count in source():
-
+                    st.caption(f"Frames processed: {frame_count + 1}")
                     # Display the next processed video frame
                     video.image(
                         frame,
