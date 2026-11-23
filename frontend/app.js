@@ -1,6 +1,6 @@
 /* Traffic Control Room frontend.
- * Static page (deployable to Vercel) that talks to the FastAPI backend running on the laptop.
- * Backend URL comes from ?api=..., else the sidebar box (saved in localStorage), else localhost:8000.
+ * Plain JavaScript dashboard served by the local FastAPI server (traffic_monitoring/server.py),
+ * so the API is on the same origin. Opened as a file, it falls back to http://localhost:8000.
  */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -10,9 +10,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
 
-const params = new URLSearchParams(location.search);
-let API = (params.get("api") || store.get("api") || "http://localhost:8000").replace(/\/+$/, "");
-if (params.get("api")) store.set("api", API);
+const API = location.protocol.startsWith("http") ? "" : "http://localhost:8000";
 
 const MODES = {
   detect: { step: "Module 01", title: "Vehicle Detection", btn: "Start detection",
@@ -130,7 +128,7 @@ function updateButtons() {
   if (!MODES[view]) return;
   $("#startBtn").disabled = !online || running;
   $("#stopBtn").disabled = !online || !running;
-  if (!online && !running) setMsg("Backend offline: start the server on the laptop and paste its URL in the sidebar.", "err");
+  if (!online && !running) setMsg("Backend offline: start the server with  uvicorn server:app --port 8000  in traffic_monitoring/.", "err");
   else if ($("#liveMsg").classList.contains("err") && !running) setMsg("");
 }
 
@@ -279,15 +277,6 @@ function tick() {
 }
 
 /* ---------- init ---------- */
-$("#apiUrl").value = API;
-$("#backendForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  API = $("#apiUrl").value.trim().replace(/\/+$/, "") || "http://localhost:8000";
-  $("#apiUrl").value = API;
-  store.set("api", API);
-  await checkHealth();
-  route();
-});
 $("#startBtn").addEventListener("click", start);
 $("#stopBtn").addEventListener("click", stop);
 window.addEventListener("hashchange", route);

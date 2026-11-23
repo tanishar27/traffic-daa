@@ -41,12 +41,6 @@ p{color:var(--muted)}
 .kv{border-top:1px solid var(--line);margin-top:18px;padding-top:10px}
 .kv div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
 .kv span{color:var(--muted)}.kv b{font-family:var(--mono);font-weight:600}
-.backend{margin-top:22px;display:grid;gap:8px}
-.backend input{width:100%;background:#0b0d0f;border:1px solid var(--line2);border-radius:6px;padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:12px}
-.backend input:focus{outline:none;border-color:var(--amber)}
-.backend button{background:transparent;border:1px solid var(--line2);color:var(--text);border-radius:6px;padding:8px;font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
-.backend button:hover{border-color:var(--amber)}
-.hint{font-size:12px;margin:0;line-height:1.5}
 
 /* top bar */
 .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:24px;border-bottom:1px solid var(--line)}

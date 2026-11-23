@@ -1,7 +1,7 @@
-"""FastAPI backend: runs YOLO on this machine and streams results to the web frontend.
+"""Local server: runs YOLO on this machine and serves the JavaScript dashboard.
 
-Run from this folder:
-    uvicorn server:app --host 0.0.0.0 --port 8000
+Run from this folder, then open http://localhost:8000:
+    uvicorn server:app --port 8000
 
 Endpoints
     GET  /health          backend status + model settings
@@ -10,16 +10,19 @@ Endpoints
     GET  /stream          MJPEG stream of annotated frames (use as <img src>)
     GET  /stats           live numbers for the running / last job
     GET  /report          last finished traffic report (from "count" mode)
+    GET  /                the dashboard (files in ../frontend)
 """
 
 import asyncio
 import threading
 import time
+from pathlib import Path
 
 import cv2
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from vehicle_processing import (
     CLASS_NAMES, CONF_THRESHOLD, IMAGE_SIZE,
@@ -28,9 +31,10 @@ from vehicle_processing import (
 
 SOURCES = {"detect": detect_vehicles, "track": track_vehicles, "count": count_vehicles}
 JPEG_QUALITY = 75
+FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="Traffic Control Room API")
-# Demo project: allow any origin so the Vercel frontend (or localhost) can call us.
+# Allow any origin so the dashboard also works when opened from another local port or as a file.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -151,3 +155,7 @@ async def stream():
 
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame",
                              headers={"Cache-Control": "no-store"})
+
+
+# Mounted last so the API routes above take priority.
+app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
